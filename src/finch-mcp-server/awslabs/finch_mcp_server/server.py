@@ -20,19 +20,23 @@ Note: The tools provided by this MCP server are intended for development and pro
 purposes only and are not meant for production use cases.
 """
 
+import json
 import os
 import re
 import sys
-from awslabs.finch_mcp_server.consts import LOG_FILE, SERVER_NAME
+from awslabs.finch_mcp_server.consts import LOG_FILE, SERVER_NAME, STATUS_ERROR
 
 # Import Pydantic models for input validation
 from awslabs.finch_mcp_server.models import Result
 from awslabs.finch_mcp_server.utils.build import build_image, contains_ecr_reference
 from awslabs.finch_mcp_server.utils.common import format_result
 from awslabs.finch_mcp_server.utils.ecr import create_ecr_repository
+from awslabs.finch_mcp_server.utils.help import get_help
+from awslabs.finch_mcp_server.utils.image_ls import list_images
 
 # Import utility functions from local modules
 from awslabs.finch_mcp_server.utils.push import is_ecr_repository, push_image
+from awslabs.finch_mcp_server.utils.version import get_version
 from awslabs.finch_mcp_server.utils.vm import (
     check_finch_installation,
     configure_ecr,
@@ -425,6 +429,97 @@ async def finch_create_ecr_repo(
     except Exception as e:
         error_result = format_result('error', f'Error checking/creating ECR repository: {str(e)}')
         return Result(**error_result)
+
+
+@mcp.resource(
+    uri='resource://finch_image_list', name='finch_image_list', mime_type='application/json'
+)
+async def finch_image_list() -> str:
+    """List all container images using Finch.
+
+    This resource provides a list of all container images available locally.
+    It returns structured information about each image including repository,
+    tag, image ID, created time, and size.
+
+    Returns:
+        str: JSON string containing image list information
+
+    """
+    logger.info('resource: finch_image_list')
+
+    try:
+        result = list_images()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_result = format_result(STATUS_ERROR, f'Error listing images: {str(e)}')
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.resource(uri='resource://finch_version', name='finch_version', mime_type='application/json')
+async def finch_version() -> str:
+    """Get Finch version information.
+
+    This resource provides version information for the Finch installation,
+    including version numbers and build information.
+
+    Returns:
+        str: JSON string containing version information
+
+    """
+    logger.info('resource: finch_version')
+
+    try:
+        result = get_version()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_result = format_result(STATUS_ERROR, f'Error getting version: {str(e)}')
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.resource(uri='resource://finch_help', name='finch_help', mime_type='application/json')
+async def finch_help() -> str:
+    """Get Finch help information.
+
+    This resource provides general help information for Finch commands.
+
+    Returns:
+        str: JSON string containing help information
+
+    """
+    logger.info('resource: finch_help')
+
+    try:
+        result = get_help()
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_result = format_result(STATUS_ERROR, f'Error getting help: {str(e)}')
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.resource(
+    uri='resource://finch_help/{command}', name='finch_help_command', mime_type='application/json'
+)
+async def finch_help_command(command: str) -> str:
+    """Get Finch help information for a specific command.
+
+    This resource provides help information for specific Finch commands
+    like 'image', 'container', 'vm', etc.
+
+    Args:
+        command: The Finch command to get help for
+
+    Returns:
+        str: JSON string containing command-specific help information
+
+    """
+    logger.info(f'resource: finch_help_command for {command}')
+
+    try:
+        result = get_help(command)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_result = format_result(STATUS_ERROR, f'Error getting help for {command}: {str(e)}')
+        return json.dumps(error_result, indent=2)
 
 
 def main(enable_aws_resource_write: bool = False):
