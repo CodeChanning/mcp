@@ -30,6 +30,7 @@ from awslabs.finch_mcp_server.consts import LOG_FILE, SERVER_NAME, STATUS_ERROR
 from awslabs.finch_mcp_server.models import Result
 from awslabs.finch_mcp_server.utils.build import build_image, contains_ecr_reference
 from awslabs.finch_mcp_server.utils.common import format_result
+from awslabs.finch_mcp_server.utils.container_ls import list_containers
 from awslabs.finch_mcp_server.utils.ecr import create_ecr_repository
 from awslabs.finch_mcp_server.utils.help import get_help
 from awslabs.finch_mcp_server.utils.image_ls import list_images
@@ -432,12 +433,37 @@ async def finch_create_ecr_repo(
 
 
 @mcp.resource(
+    uri='resource://finch_container_ls', name='finch_container_ls', mime_type='application/json'
+)
+async def finch_container_ls() -> str:
+    """List containers using Finch.
+
+    This resource provides a list of containers.
+    It returns structured information about each container including container ID,
+    image, command, created time, status, ports, and names.
+
+    Returns:
+        str: JSON string containing container list information
+
+    """
+    logger.info('resource: finch_container_ls')
+
+    try:
+        # Always use all_containers=True to show all containers by default
+        result = list_containers(all_containers=True)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_result = format_result(STATUS_ERROR, f'Error listing containers: {str(e)}')
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.resource(
     uri='resource://finch_image_list', name='finch_image_list', mime_type='application/json'
 )
 async def finch_image_list() -> str:
-    """List all container images using Finch.
+    """List container images using Finch.
 
-    This resource provides a list of all container images available locally.
+    This resource provides a list of container images.
     It returns structured information about each image including repository,
     tag, image ID, created time, and size.
 
@@ -448,7 +474,8 @@ async def finch_image_list() -> str:
     logger.info('resource: finch_image_list')
 
     try:
-        result = list_images()
+        # Always use all_images=True to show all images by default
+        result = list_images(all_images=True)
         return json.dumps(result, indent=2)
     except Exception as e:
         error_result = format_result(STATUS_ERROR, f'Error listing images: {str(e)}')
