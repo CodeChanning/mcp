@@ -6,6 +6,7 @@ from awslabs.finch_mcp_server.consts import STATUS_ERROR, STATUS_SUCCESS
 from awslabs.finch_mcp_server.server import (
     ensure_vm_running,
     finch_build_container_image,
+    finch_container_ls,
     finch_create_ecr_repo,
     finch_help,
     finch_help_command,
@@ -483,7 +484,7 @@ class TestFinchTools:
     @pytest.mark.asyncio
     async def test_finch_push_image_success(self):
         """Test successful finch_push_image operation."""
-        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'
+        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'  # pragma: allowlist secret
 
         set_enable_aws_resource_write(True)
 
@@ -527,7 +528,7 @@ class TestFinchTools:
     @pytest.mark.asyncio
     async def test_finch_push_image_with_ecr_error(self):
         """Test finch_push_image with ECR reference when configure_ecr returns an error."""
-        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'
+        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'  # pragma: allowlist secret
 
         set_enable_aws_resource_write(True)
 
@@ -822,7 +823,7 @@ class TestFinchTools:
     @pytest.mark.asyncio
     async def test_finch_push_image_readonly_mode(self):
         """Test finch_push_image when AWS resource write is disabled and pushing to ECR."""
-        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'
+        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'  # pragma: allowlist secret
 
         with (
             patch('awslabs.finch_mcp_server.server.check_finch_installation') as mock_check_finch,
@@ -859,6 +860,78 @@ class TestResources:
     #     pass
 
     @pytest.mark.asyncio
+    async def test_finch_container_ls_success(self):
+        """Test successful finch_container_ls resource."""
+        with patch('awslabs.finch_mcp_server.server.list_containers') as mock_list_containers:
+            mock_list_containers.return_value = {
+                'status': STATUS_SUCCESS,
+                'message': 'Successfully listed 2 containers',
+                'containers': [
+                    {
+                        'ID': '123456789abc',  # pragma: allowlist secret
+                        'Image': 'python:3.9-alpine',
+                        'Command': 'python app.py',
+                        'Created': '2023-01-01 12:00:00',
+                        'Status': 'Up 2 hours',
+                        'Ports': '8080/tcp',
+                        'Names': 'my-python-app',
+                    },
+                    {
+                        'ID': 'abcdef123456',  # pragma: allowlist secret
+                        'Image': 'nginx:latest',
+                        'Command': 'nginx -g daemon off;',
+                        'Created': '2023-01-02 12:00:00',
+                        'Status': 'Up 1 hour',
+                        'Ports': '80/tcp, 443/tcp',
+                        'Names': 'my-nginx',
+                    },
+                ],
+            }
+
+            result = await finch_container_ls()
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_SUCCESS
+            assert 'Successfully listed 2 containers' in result_json['message']
+            assert len(result_json['containers']) == 2
+            assert result_json['containers'][0]['Image'] == 'python:3.9-alpine'
+            assert result_json['containers'][1]['Image'] == 'nginx:latest'
+
+            # Verify that all_containers=True was passed to list_containers
+            mock_list_containers.assert_called_once_with(all_containers=True)
+
+    @pytest.mark.asyncio
+    async def test_finch_container_ls_error(self):
+        """Test finch_container_ls resource when an error occurs."""
+        with patch('awslabs.finch_mcp_server.server.list_containers') as mock_list_containers:
+            mock_list_containers.return_value = {
+                'status': STATUS_ERROR,
+                'message': 'Failed to list containers',
+            }
+
+            result = await finch_container_ls()
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Failed to list containers' in result_json['message']
+
+            mock_list_containers.assert_called_once_with(all_containers=True)
+
+    @pytest.mark.asyncio
+    async def test_finch_container_ls_exception(self):
+        """Test finch_container_ls resource when an exception occurs."""
+        with patch('awslabs.finch_mcp_server.server.list_containers') as mock_list_containers:
+            mock_list_containers.side_effect = Exception('Unexpected error')
+
+            result = await finch_container_ls()
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Error listing containers' in result_json['message']
+
+            mock_list_containers.assert_called_once_with(all_containers=True)
+
+    @pytest.mark.asyncio
     async def test_finch_image_list_success(self):
         """Test successful finch_image_list resource."""
         with patch('awslabs.finch_mcp_server.server.list_images') as mock_list_images:
@@ -869,7 +942,7 @@ class TestResources:
                     {
                         'Repository': 'python',
                         'Tag': '3.9-alpine',
-                        'ID': 'sha256:abcdef123456',
+                        'ID': 'sha256:abcdef123456',  # pragma: allowlist secret
                         'Created': '2023-01-01 12:00:00',
                         'Size': '45MB',
                     },
@@ -892,7 +965,8 @@ class TestResources:
             assert result_json['images'][0]['Repository'] == 'python'
             assert result_json['images'][1]['Repository'] == 'nginx'
 
-            mock_list_images.assert_called_once()
+            # Verify that all_images=True was passed to list_images
+            mock_list_images.assert_called_once_with(all_images=True)
 
     @pytest.mark.asyncio
     async def test_finch_image_list_error(self):
@@ -981,6 +1055,37 @@ class TestResources:
             mock_get_help.assert_called_once_with()
 
     @pytest.mark.asyncio
+    async def test_finch_help_error(self):
+        """Test finch_help resource when an error occurs."""
+        with patch('awslabs.finch_mcp_server.server.get_help') as mock_get_help:
+            mock_get_help.return_value = {
+                'status': STATUS_ERROR,
+                'message': 'Failed to get help',
+            }
+
+            result = await finch_help()
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Failed to get help' in result_json['message']
+
+            mock_get_help.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_finch_help_exception(self):
+        """Test finch_help resource when an exception occurs."""
+        with patch('awslabs.finch_mcp_server.server.get_help') as mock_get_help:
+            mock_get_help.side_effect = Exception('Unexpected error')
+
+            result = await finch_help()
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Error getting help' in result_json['message']
+
+            mock_get_help.assert_called_once_with()
+
+    @pytest.mark.asyncio
     async def test_finch_help_command_success(self):
         """Test successful finch_help_command resource."""
         command = 'image'
@@ -999,3 +1104,50 @@ class TestResources:
             assert 'Finch image - Manage container images' in result_json['help_text']
 
             mock_get_help.assert_called_once_with(command)
+
+    @pytest.mark.asyncio
+    async def test_finch_help_command_error(self):
+        """Test finch_help_command resource when an error occurs."""
+        command = 'invalid'
+        with patch('awslabs.finch_mcp_server.server.get_help') as mock_get_help:
+            mock_get_help.return_value = {
+                'status': STATUS_ERROR,
+                'message': 'Failed to get help for invalid',
+            }
+
+            result = await finch_help_command(command)
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Failed to get help for invalid' in result_json['message']
+
+            mock_get_help.assert_called_once_with(command)
+
+    @pytest.mark.asyncio
+    async def test_finch_help_command_exception(self):
+        """Test finch_help_command resource when an exception occurs."""
+        command = 'image'
+        with patch('awslabs.finch_mcp_server.server.get_help') as mock_get_help:
+            mock_get_help.side_effect = Exception('Unexpected error')
+
+            result = await finch_help_command(command)
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Error getting help' in result_json['message']
+
+            mock_get_help.assert_called_once_with(command)
+
+    @pytest.mark.asyncio
+    async def test_finch_version_exception(self):
+        """Test finch_version resource when an exception occurs."""
+        with patch('awslabs.finch_mcp_server.server.get_version') as mock_get_version:
+            mock_get_version.side_effect = Exception('Unexpected error')
+
+            result = await finch_version()
+            result_json = json.loads(result)
+
+            assert result_json['status'] == STATUS_ERROR
+            assert 'Error getting version' in result_json['message']
+
+            mock_get_version.assert_called_once()
