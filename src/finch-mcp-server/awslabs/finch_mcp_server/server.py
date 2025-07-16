@@ -20,6 +20,7 @@ Note: The tools provided by this MCP server are intended for development and pro
 purposes only and are not meant for production use cases.
 """
 
+import json
 import os
 import re
 import sys
@@ -425,6 +426,44 @@ async def finch_create_ecr_repo(
     except Exception as e:
         error_result = format_result('error', f'Error checking/creating ECR repository: {str(e)}')
         return Result(**error_result)
+
+
+@mcp.resource(
+    uri='resource://finch_inspect_image/{image_name}',
+    name='finch_inspect_image',
+    mime_type='application/json',
+)
+async def finch_inspect_image(image_name: str) -> str:
+    """Get detailed information about a container image.
+
+    This resource provides detailed information about an image's layers, configuration, and metadata.
+    Similar to `finch image inspect` command.
+
+    Args:
+        image_name: Name of the image to inspect
+
+    Returns:
+        str: JSON string containing image details
+
+    """
+    logger.info(f'resource: finch_inspect_image for {image_name}')
+
+    try:
+        finch_install_status = check_finch_installation()
+        if finch_install_status['status'] == 'error':
+            return json.dumps(finch_install_status, indent=2)
+
+        vm_status = ensure_vm_running()
+        if vm_status['status'] == 'error':
+            return json.dumps(vm_status, indent=2)
+
+        from awslabs.finch_mcp_server.utils.inspect import inspect_image
+
+        result = inspect_image(image_name)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_result = format_result('error', f'Error inspecting image: {str(e)}')
+        return json.dumps(error_result, indent=2)
 
 
 def main(enable_aws_resource_write: bool = False):
