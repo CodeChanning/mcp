@@ -26,9 +26,21 @@ import sys
 from awslabs.finch_mcp_server.consts import LOG_FILE, SERVER_NAME
 
 # Import Pydantic models for input validation
-from awslabs.finch_mcp_server.models import Result
+from awslabs.finch_mcp_server.models import (
+    ContainerInspectResult,
+    ContainerLSResult,
+    ContainerRemoveRequest,
+    ContainerRunRequest,
+    ContainerRunResult,
+    ContainerStopRequest,
+    Result,
+)
 from awslabs.finch_mcp_server.utils.build import build_image, contains_ecr_reference
 from awslabs.finch_mcp_server.utils.common import format_result
+from awslabs.finch_mcp_server.utils.container_inspect import inspect_container
+from awslabs.finch_mcp_server.utils.container_ls import list_containers
+from awslabs.finch_mcp_server.utils.container_run import run_container
+from awslabs.finch_mcp_server.utils.container_stop import remove_container, stop_container
 from awslabs.finch_mcp_server.utils.ecr import create_ecr_repository
 
 # Import utility functions from local modules
@@ -371,6 +383,328 @@ def set_enable_aws_resource_write(enabled: bool):
     global enable_aws_resource_write
     enable_aws_resource_write = enabled
     logger.info(f'AWS resource write enabled: {enable_aws_resource_write}')
+
+
+@mcp.tool()
+async def finch_container_run(request: ContainerRunRequest) -> ContainerRunResult:
+    """Run a container using Finch.
+
+    This tool allows you to run a container with various configuration options.
+    It first ensures that the Finch VM is running, then executes the container
+    with the specified parameters.
+
+    Arguments:
+        request: The request object of type ContainerRunRequest containing:
+            - image (str): The image to run
+            - name (str, optional): Name to assign to the container
+            - detach (bool, optional): Run container in background. Defaults to True.
+            - ports (List[str], optional): List of port mappings (e.g., ["8080:80"])
+            - volumes (List[str], optional): List of volume mappings (e.g., ["/host:/container"])
+            - env_vars (List[str], optional): List of environment variables (e.g., ["KEY=VALUE"])
+            - command (str, optional): Command to run in the container
+            - entrypoint (str, optional): Overwrite the default entrypoint
+            - network (str, optional): Connect to a network
+            - restart_policy (str, optional): Restart policy (e.g., "always", "on-failure")
+            - memory (str, optional): Memory limit (e.g., "512m", "1g")
+            - cpus (str, optional): Number of CPUs (e.g., "0.5", "2")
+            - platform (str, optional): Set platform if server is multi-platform capable
+            - user (str, optional): Username or UID
+            - workdir (str, optional): Working directory inside the container
+            - labels (List[str], optional): Set metadata on container (e.g., ["key=value"])
+            - rm (bool, optional): Automatically remove the container when it exits
+            - privileged (bool, optional): Give extended privileges to this container
+            - read_only (bool, optional): Mount the container's root filesystem as read only
+
+    Returns:
+        ContainerRunResult: An object containing:
+            - status (str): "success" if the operation succeeded, "error" otherwise
+            - message (str): A descriptive message about the result of the operation
+            - container_id (str, optional): The ID of the created container if successful
+
+    Example response:
+        ContainerRunResult(status="success", message="Successfully started container from image nginx:latest", container_id="3f4ab66b2")
+
+    """
+    logger.info('tool-name: finch_container_run')
+    logger.info(f'tool-args: image={request.image}')
+
+    try:
+        finch_install_status = check_finch_installation()
+        if finch_install_status['status'] == 'error':
+            return ContainerRunResult(**finch_install_status)
+
+        vm_status = ensure_vm_running()
+        if vm_status['status'] == 'error':
+            return ContainerRunResult(**vm_status)
+
+        result = run_container(
+            image=request.image,
+            name=request.name,
+            detach=request.detach,
+            ports=request.ports,
+            volumes=request.volumes,
+            env_vars=request.env_vars,
+            command=request.command,
+            entrypoint=request.entrypoint,
+            network=request.network,
+            restart_policy=request.restart_policy,
+            memory=request.memory,
+            cpus=request.cpus,
+            platform=request.platform,
+            user=request.user,
+            workdir=request.workdir,
+            labels=request.labels,
+            rm=request.rm,
+            privileged=request.privileged,
+            read_only=request.read_only,
+        )
+        return ContainerRunResult(**result)
+    except Exception as e:
+        error_result = format_result('error', f'Error running container: {str(e)}')
+        return ContainerRunResult(**error_result)
+
+
+@mcp.tool()
+async def finch_container_stop(request: ContainerStopRequest) -> Result:
+    """Stop a running container.
+
+    This tool allows you to stop a running container with options to specify
+    a timeout before forcefully killing it.
+
+    Arguments:
+        request: The request object of type ContainerStopRequest containing:
+            - container_id (str): The ID or name of the container to stop
+            - time (int, optional): Seconds to wait for stop before killing it
+            - force (bool, optional): Force the container to stop. Defaults to False.
+
+    Returns:
+        Result: An object containing:
+            - status (str): "success" if the operation succeeded, "error" otherwise
+            - message (str): A descriptive message about the result of the operation
+
+    Example response:
+        Result(status="success", message="Successfully stopped container 3f4ab66b2")
+
+    """
+    logger.info('tool-name: finch_container_stop')
+    logger.info(f'tool-args: container_id={request.container_id}')
+
+    try:
+        finch_install_status = check_finch_installation()
+        if finch_install_status['status'] == 'error':
+            return Result(**finch_install_status)
+
+        vm_status = ensure_vm_running()
+        if vm_status['status'] == 'error':
+            return Result(**vm_status)
+
+        result = stop_container(
+            container_id=request.container_id, time=request.time, force=request.force
+        )
+        return Result(**result)
+    except Exception as e:
+        error_result = format_result('error', f'Error stopping container: {str(e)}')
+        return Result(**error_result)
+
+
+@mcp.tool()
+async def finch_container_remove(request: ContainerRemoveRequest) -> Result:
+    """Remove a container.
+
+    This tool allows you to remove a container with options to force removal
+    and remove associated volumes.
+
+    Arguments:
+        request: The request object of type ContainerRemoveRequest containing:
+            - container_id (str): The ID or name of the container to remove
+            - force (bool, optional): Force removal of the container. Defaults to False.
+            - volumes (bool, optional): Remove anonymous volumes associated with the container. Defaults to False.
+
+    Returns:
+        Result: An object containing:
+            - status (str): "success" if the operation succeeded, "error" otherwise
+            - message (str): A descriptive message about the result of the operation
+
+    Example response:
+        Result(status="success", message="Successfully removed container 3f4ab66b2")
+
+    """
+    logger.info('tool-name: finch_container_remove')
+    logger.info(f'tool-args: container_id={request.container_id}')
+
+    try:
+        finch_install_status = check_finch_installation()
+        if finch_install_status['status'] == 'error':
+            return Result(**finch_install_status)
+
+        vm_status = ensure_vm_running()
+        if vm_status['status'] == 'error':
+            return Result(**vm_status)
+
+        result = remove_container(
+            container_id=request.container_id, force=request.force, volumes=request.volumes
+        )
+        return Result(**result)
+    except Exception as e:
+        error_result = format_result('error', f'Error removing container: {str(e)}')
+        return Result(**error_result)
+
+
+@mcp.resource(
+    uri='resource://finch_container_ls', name='finch_container_ls', mime_type='application/json'
+)
+async def finch_container_ls() -> ContainerLSResult:
+    """List containers using Finch.
+
+    This resource provides a list of containers with various filtering options.
+    By default, it shows all containers (including stopped ones).
+
+    Args:
+        all_containers (bool, optional): Show all containers (default shows just running)
+        filter_expr (List[str], optional): Filter output based on conditions provided
+        format_str (str, optional): Format the output using the given Go template
+        last (int, optional): Show n last created containers (includes all states)
+        latest (bool, optional): Show the latest created container (includes all states)
+        no_trunc (bool, optional): Don't truncate output
+        quiet (bool, optional): Only display container IDs
+        size (bool, optional): Display total file sizes
+
+    Returns:
+        ContainerLSResult: An object containing:
+            - status (str): "success" if the operation succeeded, "error" otherwise
+            - message (str): A descriptive message about the result of the operation
+            - containers (List[Dict]): List of containers if successful
+            - raw_output (str): Raw output from the command if successful
+
+    Example response:
+        ContainerLSResult(
+            status="success",
+            message="Successfully listed containers",
+            containers=[
+                {
+                    "ID": "3f4ab66b2",
+                    "Image": "nginx:latest",
+                    "Command": "/docker-entrypoint.sh nginx -g 'daemon off;'",
+                    "CreatedAt": "2025-07-17 10:30:45 -0700 PDT",
+                    "Status": "Up 2 hours",
+                    "Ports": "0.0.0.0:8080->80/tcp",
+                    "Names": "test-nginx"
+                }
+            ],
+            raw_output="[JSON output string]"
+        )
+
+    """
+    logger.info('resource-name: finch_container_ls')
+    logger.info('resource-args: none')
+
+    try:
+        finch_install_status = check_finch_installation()
+        if finch_install_status['status'] == 'error':
+            return ContainerLSResult(
+                status=finch_install_status['status'],
+                message=finch_install_status['message'],
+                raw_output=None,
+            )
+
+        vm_status = ensure_vm_running()
+        if vm_status['status'] == 'error':
+            return ContainerLSResult(
+                status=vm_status['status'], message=vm_status['message'], raw_output=None
+            )
+
+        # Use default parameters for list_containers
+        result = list_containers(
+            all_containers=True,  # Show all containers by default
+            filter_expr=None,
+            format_str=None,
+            last=None,
+            latest=False,
+            no_trunc=False,
+            quiet=False,
+            size=False,
+        )
+        return ContainerLSResult(
+            status=result['status'], message=result['message'], raw_output=result.get('raw_output')
+        )
+    except Exception as e:
+        return ContainerLSResult(
+            status='error', message=f'Error listing containers: {str(e)}', raw_output=None
+        )
+
+
+@mcp.resource(
+    uri='resource://finch_container_inspect/{container_id}',
+    name='finch_container_inspect',
+    mime_type='application/json',
+)
+async def finch_container_inspect(container_id: str) -> ContainerInspectResult:
+    """Inspect a container to get detailed information.
+
+    This resource retrieves detailed information about a specific container,
+    including its configuration, state, network settings, and more.
+
+    Args:
+        container_id (str): The ID or name of the container to inspect
+
+    Returns:
+        ContainerInspectResult: An object containing:
+            - status (str): "success" if the operation succeeded, "error" otherwise
+            - message (str): A descriptive message about the result of the operation
+            - container_info (Dict, optional): Detailed information about the container if successful
+            - raw_output (str, optional): Raw output from the inspect command if successful
+
+    Example response:
+        ContainerInspectResult(
+            status="success",
+            message="Successfully inspected container 3f4ab66b2",
+            container_info={
+                "Id": "3f4ab66b2",
+                "Created": "2025-07-17T10:30:45.000000000Z",
+                "State": {"Status": "running", "Running": true},
+                "Config": {"Image": "nginx:latest", "ExposedPorts": {"80/tcp": {}}},
+                "NetworkSettings": {"Ports": {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8080"}]}}
+            },
+            raw_output="[JSON output string]"
+        )
+
+    """
+    logger.info('resource-name: finch_container_inspect')
+    logger.info(f'resource-args: container_id={container_id}')
+
+    try:
+        finch_install_status = check_finch_installation()
+        if finch_install_status['status'] == 'error':
+            return ContainerInspectResult(
+                status=finch_install_status['status'],
+                message=finch_install_status['message'],
+                container_info=None,
+                raw_output=None,
+            )
+
+        vm_status = ensure_vm_running()
+        if vm_status['status'] == 'error':
+            return ContainerInspectResult(
+                status=vm_status['status'],
+                message=vm_status['message'],
+                container_info=None,
+                raw_output=None,
+            )
+
+        result = inspect_container(container_id)
+        return ContainerInspectResult(
+            status=result['status'],
+            message=result['message'],
+            container_info=result.get('container_info'),
+            raw_output=result.get('raw_output'),
+        )
+    except Exception as e:
+        return ContainerInspectResult(
+            status='error',
+            message=f'Error inspecting container: {str(e)}',
+            container_info=None,
+            raw_output=None,
+        )
 
 
 @mcp.tool()
