@@ -17,7 +17,6 @@
 This module provides functions to list container images using Finch.
 """
 
-import json
 from ..consts import STATUS_ERROR, STATUS_SUCCESS
 from .common import execute_command, format_result
 from loguru import logger
@@ -44,7 +43,7 @@ def list_images(
         Dict[str, Any]: A dictionary containing:
             - status (str): "success" if the operation succeeded, "error" otherwise
             - message (str): A descriptive message about the result
-            - images (List[Dict]): List of image information if successful
+            - raw_output (str): Raw JSON output from the command (if successful)
 
     """
     try:
@@ -77,34 +76,10 @@ def list_images(
             logger.error(error_msg)
             return format_result(STATUS_ERROR, error_msg)
 
-        # Parse JSON output
-        images = []
-        if result.stdout.strip():
-            try:
-                # Each line is a separate JSON object
-                for line in result.stdout.strip().split('\n'):
-                    if line.strip():
-                        image_data = json.loads(line)
-                        images.append(image_data)
-            except json.JSONDecodeError as e:
-                logger.error(f'Failed to parse image list JSON: {e}')
-                # Fallback to plain text output
-                result_plain = execute_command(['finch', 'image', 'ls'])
-                if result_plain.returncode == 0:
-                    return {
-                        'status': STATUS_SUCCESS,
-                        'message': f'Successfully listed {len(result_plain.stdout.strip().split(chr(10))[1:])} images (plain text format)',
-                        'images_text': result_plain.stdout,
-                    }
-                else:
-                    return format_result(
-                        STATUS_ERROR, f'Failed to list images: {result_plain.stderr}'
-                    )
-
         return {
             'status': STATUS_SUCCESS,
-            'message': f'Successfully listed {len(images)} images',
-            'images': images,
+            'message': 'Successfully listed images',
+            'raw_output': result.stdout,
         }
 
     except Exception as e:

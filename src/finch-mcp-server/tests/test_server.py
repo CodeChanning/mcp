@@ -3,6 +3,7 @@
 import json
 import pytest
 from awslabs.finch_mcp_server.consts import STATUS_ERROR, STATUS_SUCCESS
+from awslabs.finch_mcp_server.models import ContainerLSResult
 from awslabs.finch_mcp_server.server import (
     ensure_vm_running,
     finch_build_container_image,
@@ -484,7 +485,7 @@ class TestFinchTools:
     @pytest.mark.asyncio
     async def test_finch_push_image_success(self):
         """Test successful finch_push_image operation."""
-        image = '123456789012.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'  # pragma: allowlist secret
+        image = 'test-account-id.dkr.ecr.us-west-2.amazonaws.com/myrepo:latest'  # pragma: allowlist secret
 
         set_enable_aws_resource_write(True)
 
@@ -852,53 +853,37 @@ class TestFinchTools:
 class TestResources:
     """Tests for Finch MCP resources."""
 
-    # TODO: Add resource registration tests once MCP framework testing patterns are established
-    # def test_resource_registrations(self):
-    #     """Test that all resources are registered correctly."""
-    #     # This test would verify MCP resource registration
-    #     # Currently commented out due to import complexity
-    #     pass
-
     @pytest.mark.asyncio
     async def test_finch_container_ls_success(self):
         """Test successful finch_container_ls resource."""
         with patch('awslabs.finch_mcp_server.server.list_containers') as mock_list_containers:
+            # Mock raw JSON output
+            raw_output = '{"ID":"test-container-id-1","Image":"python:3.9-alpine","Command":"python app.py","Created":"2023-01-01 12:00:00","Status":"Up 2 hours","Ports":"8080/tcp","Names":"my-python-app"}\n{"ID":"test-container-id-2","Image":"nginx:latest","Command":"nginx -g daemon off;","Created":"2023-01-02 12:00:00","Status":"Up 1 hour","Ports":"80/tcp, 443/tcp","Names":"my-nginx"}'
+
             mock_list_containers.return_value = {
                 'status': STATUS_SUCCESS,
-                'message': 'Successfully listed 2 containers',
-                'containers': [
-                    {
-                        'ID': '123456789abc',  # pragma: allowlist secret
-                        'Image': 'python:3.9-alpine',
-                        'Command': 'python app.py',
-                        'Created': '2023-01-01 12:00:00',
-                        'Status': 'Up 2 hours',
-                        'Ports': '8080/tcp',
-                        'Names': 'my-python-app',
-                    },
-                    {
-                        'ID': 'abcdef123456',  # pragma: allowlist secret
-                        'Image': 'nginx:latest',
-                        'Command': 'nginx -g daemon off;',
-                        'Created': '2023-01-02 12:00:00',
-                        'Status': 'Up 1 hour',
-                        'Ports': '80/tcp, 443/tcp',
-                        'Names': 'my-nginx',
-                    },
-                ],
+                'message': 'Successfully listed containers',
+                'raw_output': raw_output,
             }
 
             result = await finch_container_ls()
-            result_json = json.loads(result)
 
-            assert result_json['status'] == STATUS_SUCCESS
-            assert 'Successfully listed 2 containers' in result_json['message']
-            assert len(result_json['containers']) == 2
-            assert result_json['containers'][0]['Image'] == 'python:3.9-alpine'
-            assert result_json['containers'][1]['Image'] == 'nginx:latest'
+            assert isinstance(result, ContainerLSResult)
+            assert result.status == STATUS_SUCCESS
+            assert 'Successfully listed containers' in result.message
+            assert result.raw_output == raw_output
 
-            # Verify that all_containers=True was passed to list_containers
-            mock_list_containers.assert_called_once_with(all_containers=True)
+            # Verify that list_containers was called with default parameters
+            mock_list_containers.assert_called_once_with(
+                all_containers=True,
+                filter_expr=None,
+                format_str=None,
+                last=None,
+                latest=False,
+                no_trunc=False,
+                quiet=False,
+                size=False,
+            )
 
     @pytest.mark.asyncio
     async def test_finch_container_ls_error(self):
@@ -910,12 +895,21 @@ class TestResources:
             }
 
             result = await finch_container_ls()
-            result_json = json.loads(result)
 
-            assert result_json['status'] == STATUS_ERROR
-            assert 'Failed to list containers' in result_json['message']
+            assert isinstance(result, ContainerLSResult)
+            assert result.status == STATUS_ERROR
+            assert 'Failed to list containers' in result.message
 
-            mock_list_containers.assert_called_once_with(all_containers=True)
+            mock_list_containers.assert_called_once_with(
+                all_containers=True,
+                filter_expr=None,
+                format_str=None,
+                last=None,
+                latest=False,
+                no_trunc=False,
+                quiet=False,
+                size=False,
+            )
 
     @pytest.mark.asyncio
     async def test_finch_container_ls_exception(self):
@@ -924,12 +918,21 @@ class TestResources:
             mock_list_containers.side_effect = Exception('Unexpected error')
 
             result = await finch_container_ls()
-            result_json = json.loads(result)
 
-            assert result_json['status'] == STATUS_ERROR
-            assert 'Error listing containers' in result_json['message']
+            assert isinstance(result, ContainerLSResult)
+            assert result.status == STATUS_ERROR
+            assert 'Error listing containers' in result.message
 
-            mock_list_containers.assert_called_once_with(all_containers=True)
+            mock_list_containers.assert_called_once_with(
+                all_containers=True,
+                filter_expr=None,
+                format_str=None,
+                last=None,
+                latest=False,
+                no_trunc=False,
+                quiet=False,
+                size=False,
+            )
 
     @pytest.mark.asyncio
     async def test_finch_image_list_success(self):

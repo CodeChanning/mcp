@@ -22,14 +22,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 2 containers' in result['message']
-        assert len(result['containers']) == 2
-        assert result['containers'][0]['Image'] == 'python:3.9-alpine'
-        assert result['containers'][1]['Image'] == 'nginx:latest'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json']
+            ['finch', 'container', 'ls', '--all', '--format', 'json']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -41,19 +40,17 @@ class TestContainerLs:
         mock_result.stdout = '{"ID":"test-container-1","Image":"python:3.9-alpine","Command":"python app.py","Created":"2023-01-01 12:00:00","Status":"Up 2 hours","Ports":"8080/tcp","Names":"my-python-app"}\n{"ID":"test-container-2","Image":"nginx:latest","Command":"nginx -g daemon off;","Created":"2023-01-02 12:00:00","Status":"Exited (0) 1 hour ago","Ports":"80/tcp, 443/tcp","Names":"my-nginx"}'
         mock_execute_command.return_value = mock_result
 
-        # Call the function with all_containers=True
         result = list_containers(all_containers=True)
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 2 containers' in result['message']
-        assert len(result['containers']) == 2
-        assert result['containers'][0]['Status'] == 'Up 2 hours'
-        assert result['containers'][1]['Status'] == 'Exited (0) 1 hour ago'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
-        # Verify the command was called correctly with -a flag
+        # Verify the command was called correctly with --all flag
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '-a']
+            ['finch', 'container', 'ls', '--all', '--format', 'json']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -70,22 +67,23 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers' in result['message']
-        assert len(result['containers']) == 1
-        assert result['containers'][0]['Image'] == 'python:3.9-alpine'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
-        # Verify the command was called correctly with -f flags
+        # Verify the command was called correctly with --filter flags
         mock_execute_command.assert_called_once_with(
             [
                 'finch',
                 'container',
                 'ls',
+                '--all',
+                '--filter',
+                'status=running',
+                '--filter',
+                'label=app=web',
                 '--format',
                 'json',
-                '-f',
-                'status=running',
-                '-f',
-                'label=app=web',
             ]
         )
 
@@ -103,13 +101,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers' in result['message']
-        assert len(result['containers']) == 1
-        assert result['containers'][0]['Image'] == 'nginx:latest'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
-        # Verify the command was called correctly with -n flag
+        # Verify the command was called correctly with --last flag
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '-n', '1']
+            ['finch', 'container', 'ls', '--all', '--format', 'json', '--last', '1']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -126,13 +124,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers' in result['message']
-        assert len(result['containers']) == 1
-        assert result['containers'][0]['Image'] == 'nginx:latest'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
-        # Verify the command was called correctly with -l flag
+        # Verify the command was called correctly with --latest flag
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '-l']
+            ['finch', 'container', 'ls', '--all', '--format', 'json', '--latest']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -149,13 +147,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers' in result['message']
-        assert len(result['containers']) == 1
-        assert result['containers'][0]['ID'] == 'test-container-full-id'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with --no-trunc flag
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '--no-trunc']
+            ['finch', 'container', 'ls', '--all', '--format', 'json', '--no-trunc']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -172,14 +170,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 2 containers' in result['message']
-        assert len(result['containers']) == 2
-        assert 'ID' in result['containers'][0]
-        assert 'Image' not in result['containers'][0]
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
-        # Verify the command was called correctly with -q flag
+        # Verify the command was called correctly with --quiet flag
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '-q']
+            ['finch', 'container', 'ls', '--all', '--format', 'json', '--quiet']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -196,13 +193,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers' in result['message']
-        assert len(result['containers']) == 1
-        assert result['containers'][0]['Size'] == '10MB'
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
-        # Verify the command was called correctly with -s flag
+        # Verify the command was called correctly with --size flag
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '-s']
+            ['finch', 'container', 'ls', '--all', '--format', 'json', '--size']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -219,12 +216,13 @@ class TestContainerLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers' in result['message']
-        assert len(result['containers']) == 1
+        assert 'Successfully listed containers' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with all flags
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json', '-a', '--no-trunc', '-s']
+            ['finch', 'container', 'ls', '--all', '--format', 'json', '--no-trunc', '--size']
         )
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
@@ -245,63 +243,8 @@ class TestContainerLs:
 
         # Verify the command was called correctly
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json']
+            ['finch', 'container', 'ls', '--all', '--format', 'json']
         )
-
-    @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
-    def test_list_containers_json_decode_error(self, mock_execute_command):
-        """Test container listing when JSON parsing fails."""
-        # Mock the execute_command function to return invalid JSON
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = 'Invalid JSON'
-        mock_execute_command.return_value = mock_result
-
-        # Mock the fallback command
-        mock_fallback_result = MagicMock()
-        mock_fallback_result.returncode = 0
-        mock_fallback_result.stdout = 'CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES\ntest-container-1   python:3.9-alpine   python app.py   2023-01-01 12:00:00   Up 2 hours   8080/tcp   my-python-app'
-        mock_execute_command.side_effect = [mock_result, mock_fallback_result]
-
-        # Call the function
-        result = list_containers()
-
-        # Verify the result
-        assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 containers (plain text format)' in result['message']
-        assert 'containers_text' in result
-
-        # Verify both commands were called
-        assert mock_execute_command.call_count == 2
-        mock_execute_command.assert_any_call(['finch', 'container', 'ls', '--format', 'json'])
-        mock_execute_command.assert_any_call(['finch', 'container', 'ls'])
-
-    @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
-    def test_list_containers_json_decode_error_fallback_error(self, mock_execute_command):
-        """Test container listing when JSON parsing fails and fallback also fails."""
-        # Mock the execute_command function to return invalid JSON
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = 'Invalid JSON'
-
-        # Mock the fallback command to also fail
-        mock_fallback_result = MagicMock()
-        mock_fallback_result.returncode = 1
-        mock_fallback_result.stderr = 'Error: failed to list containers'
-
-        mock_execute_command.side_effect = [mock_result, mock_fallback_result]
-
-        # Call the function
-        result = list_containers()
-
-        # Verify the result
-        assert result['status'] == STATUS_ERROR
-        assert 'Failed to list containers' in result['message']
-
-        # Verify both commands were called
-        assert mock_execute_command.call_count == 2
-        mock_execute_command.assert_any_call(['finch', 'container', 'ls', '--format', 'json'])
-        mock_execute_command.assert_any_call(['finch', 'container', 'ls'])
 
     @patch('awslabs.finch_mcp_server.utils.container_ls.execute_command')
     def test_list_containers_exception(self, mock_execute_command):
@@ -318,5 +261,5 @@ class TestContainerLs:
 
         # Verify the command was called
         mock_execute_command.assert_called_once_with(
-            ['finch', 'container', 'ls', '--format', 'json']
+            ['finch', 'container', 'ls', '--all', '--format', 'json']
         )

@@ -22,10 +22,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 2 images' in result['message']
-        assert len(result['images']) == 2
-        assert result['images'][0]['Repository'] == 'python'
-        assert result['images'][1]['Repository'] == 'nginx'
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly
         mock_execute_command.assert_called_once_with(['finch', 'image', 'ls', '--format', 'json'])
@@ -44,11 +43,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 3 images' in result['message']
-        assert len(result['images']) == 3
-        assert result['images'][0]['Repository'] == 'python'
-        assert result['images'][1]['Repository'] == 'nginx'
-        assert result['images'][2]['Repository'] == '<none>'
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with -a flag
         mock_execute_command.assert_called_once_with(
@@ -69,9 +66,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 images' in result['message']
-        assert len(result['images']) == 1
-        assert result['images'][0]['Repository'] == 'python'
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with -f flags
         mock_execute_command.assert_called_once_with(
@@ -102,12 +99,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 images' in result['message']
-        assert len(result['images']) == 1
-        assert (
-            result['images'][0]['ID']
-            == 'sha256:abcdef123456789abcdef123456789abcdef123456789abcdef123456789abcdef'
-        )
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with --no-trunc flag
         mock_execute_command.assert_called_once_with(
@@ -128,10 +122,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 2 images' in result['message']
-        assert len(result['images']) == 2
-        assert 'ID' in result['images'][0]
-        assert 'Repository' not in result['images'][0]
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with -q flag
         mock_execute_command.assert_called_once_with(
@@ -152,9 +145,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 images' in result['message']
-        assert len(result['images']) == 1
-        assert 'Digest' in result['images'][0]
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with --digests flag
         mock_execute_command.assert_called_once_with(
@@ -175,10 +168,9 @@ class TestImageLs:
 
         # Verify the result
         assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 images' in result['message']
-        assert len(result['images']) == 1
-        assert 'Digest' in result['images'][0]
-        assert result['images'][0]['ID'].startswith('sha256:abcdef123456789abcdef')
+        assert 'Successfully listed images' in result['message']
+        assert 'raw_output' in result
+        assert result['raw_output'] == mock_result.stdout
 
         # Verify the command was called correctly with all flags
         mock_execute_command.assert_called_once_with(
@@ -203,61 +195,6 @@ class TestImageLs:
 
         # Verify the command was called correctly
         mock_execute_command.assert_called_once_with(['finch', 'image', 'ls', '--format', 'json'])
-
-    @patch('awslabs.finch_mcp_server.utils.image_ls.execute_command')
-    def test_list_images_json_decode_error(self, mock_execute_command):
-        """Test image listing when JSON parsing fails."""
-        # Mock the execute_command function to return invalid JSON
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = 'Invalid JSON'
-        mock_execute_command.return_value = mock_result
-
-        # Mock the fallback command
-        mock_fallback_result = MagicMock()
-        mock_fallback_result.returncode = 0
-        mock_fallback_result.stdout = 'REPOSITORY   TAG       IMAGE ID       CREATED          SIZE\npython      3.9-alpine   abcdef123456   2023-01-01 12:00:00   45MB'
-        mock_execute_command.side_effect = [mock_result, mock_fallback_result]
-
-        # Call the function
-        result = list_images()
-
-        # Verify the result
-        assert result['status'] == STATUS_SUCCESS
-        assert 'Successfully listed 1 images (plain text format)' in result['message']
-        assert 'images_text' in result
-
-        # Verify both commands were called
-        assert mock_execute_command.call_count == 2
-        mock_execute_command.assert_any_call(['finch', 'image', 'ls', '--format', 'json'])
-        mock_execute_command.assert_any_call(['finch', 'image', 'ls'])
-
-    @patch('awslabs.finch_mcp_server.utils.image_ls.execute_command')
-    def test_list_images_json_decode_error_fallback_error(self, mock_execute_command):
-        """Test image listing when JSON parsing fails and fallback also fails."""
-        # Mock the execute_command function to return invalid JSON
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = 'Invalid JSON'
-
-        # Mock the fallback command to also fail
-        mock_fallback_result = MagicMock()
-        mock_fallback_result.returncode = 1
-        mock_fallback_result.stderr = 'Error: failed to list images'
-
-        mock_execute_command.side_effect = [mock_result, mock_fallback_result]
-
-        # Call the function
-        result = list_images()
-
-        # Verify the result
-        assert result['status'] == STATUS_ERROR
-        assert 'Failed to list images' in result['message']
-
-        # Verify both commands were called
-        assert mock_execute_command.call_count == 2
-        mock_execute_command.assert_any_call(['finch', 'image', 'ls', '--format', 'json'])
-        mock_execute_command.assert_any_call(['finch', 'image', 'ls'])
 
     @patch('awslabs.finch_mcp_server.utils.image_ls.execute_command')
     def test_list_images_exception(self, mock_execute_command):

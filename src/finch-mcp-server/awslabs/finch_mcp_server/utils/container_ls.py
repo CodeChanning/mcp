@@ -12,112 +12,92 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Container listing utilities for the Finch MCP server.
+"""Utility functions for listing containers using Finch.
 
-This module provides functions to list containers using Finch.
+This module provides functions for listing containers with various filtering options.
 """
 
-import json
-from ..consts import STATUS_ERROR, STATUS_SUCCESS
-from .common import execute_command, format_result
-from loguru import logger
+import logging
+from awslabs.finch_mcp_server.consts import SERVER_NAME
+from awslabs.finch_mcp_server.utils.common import execute_command, format_result
 from typing import Any, Dict, List, Optional
 
 
+logger = logging.getLogger(SERVER_NAME)
+
+
 def list_containers(
-    all_containers: bool = False,
+    all_containers: bool = True,
     filter_expr: Optional[List[str]] = None,
+    format_str: Optional[str] = None,
     last: Optional[int] = None,
     latest: bool = False,
     no_trunc: bool = False,
     quiet: bool = False,
     size: bool = False,
 ) -> Dict[str, Any]:
-    """List containers using finch container ls with various options.
+    """List containers using Finch.
 
     Args:
-        all_containers: Show all containers (default: False, only running)
-        filter_expr: Filter output based on conditions (e.g., ["status=exited", "label=app=web"])
-        last: Show n last created containers (includes all states)
-        latest: Show the latest created container (includes all states)
-        no_trunc: Don't truncate output
-        quiet: Only display container IDs
-        size: Display total file sizes
-
+        all_containers (bool, optional): Show all containers (default is True, showing all containers including stopped ones)
+        filter_expr (List[str], optional): Filter output based on conditions provided
+        format_str (str, optional): Format the output using the given Go template
+        last (int, optional): Show n last created containers (includes all states)
+        latest (bool, optional): Show the latest created container (includes all states)
+        no_trunc (bool, optional): Don't truncate output
+        quiet (bool, optional): Only display container IDs
+        size (bool, optional): Display total file sizes
     Returns:
         Dict[str, Any]: A dictionary containing:
             - status (str): "success" if the operation succeeded, "error" otherwise
-            - message (str): A descriptive message about the result
-            - containers (List[Dict]): List of container information if successful
+            - message (str): A descriptive message about the result of the operation
+            - raw_output (str): Raw JSON output from the command (if successful)
 
     """
+    logger.info('Listing containers')
+
+    # Build the command
+    cmd = ['finch', 'container', 'ls']
+
+    if all_containers:
+        cmd.append('--all')
+
+    if filter_expr:
+        for filter_item in filter_expr:
+            cmd.extend(['--filter', filter_item])
+
+    if format_str is None:
+        # Default to JSON format for structured data
+        format_str = 'json'
+
+    if format_str:
+        cmd.extend(['--format', format_str])
+
+    if last is not None:
+        cmd.extend(['--last', str(last)])
+
+    if latest:
+        cmd.append('--latest')
+
+    if no_trunc:
+        cmd.append('--no-trunc')
+
+    if quiet:
+        cmd.append('--quiet')
+
+    if size:
+        cmd.append('--size')
+
     try:
-        logger.info('Listing containers')
-
-        # Build command with options
-        cmd = ['finch', 'container', 'ls', '--format', 'json']
-
-        if all_containers:
-            cmd.append('-a')
-
-        if filter_expr:
-            for filter_item in filter_expr:
-                cmd.extend(['-f', filter_item])
-
-        if last is not None:
-            cmd.extend(['-n', str(last)])
-
-        if latest:
-            cmd.append('-l')
-
-        if no_trunc:
-            cmd.append('--no-trunc')
-
-        if quiet:
-            cmd.append('-q')
-
-        if size:
-            cmd.append('-s')
-
-        # Execute command with options
         result = execute_command(cmd)
-
-        if result.returncode != 0:
-            error_msg = f'Failed to list containers: {result.stderr}'
-            logger.error(error_msg)
-            return format_result(STATUS_ERROR, error_msg)
-
-        # Parse JSON output
-        containers = []
-        if result.stdout.strip():
-            try:
-                # Each line is a separate JSON object
-                for line in result.stdout.strip().split('\n'):
-                    if line.strip():
-                        container_data = json.loads(line)
-                        containers.append(container_data)
-            except json.JSONDecodeError as e:
-                logger.error(f'Failed to parse container list JSON: {e}')
-                # Fallback to plain text output
-                result_plain = execute_command(['finch', 'container', 'ls'])
-                if result_plain.returncode == 0:
-                    return {
-                        'status': STATUS_SUCCESS,
-                        'message': f'Successfully listed {len(result_plain.stdout.strip().split(chr(10))[1:])} containers (plain text format)',
-                        'containers_text': result_plain.stdout,
-                    }
-                else:
-                    return format_result(
-                        STATUS_ERROR, f'Failed to list containers: {result_plain.stderr}'
-                    )
-
-        return {
-            'status': STATUS_SUCCESS,
-            'message': f'Successfully listed {len(containers)} containers, all continers bool: {all_containers}',
-            'containers': containers,
-        }
-
+        if result.returncode == 0:
+            # Just return the raw output without trying to parse it
+            return {
+                'status': 'success',
+                'message': 'Successfully listed containers',
+                'raw_output': result.stdout,
+            }
+        else:
+            return format_result('error', f'Failed to list containers: {result.stderr}')
     except Exception as e:
-        error_msg = f'Error listing containers: {str(e)}'
-        logger.error(error_msg)
-        return format_result(STATUS_ERROR, error_msg)
+        return format_result('error', f'Error listing containers: {str(e)}')
